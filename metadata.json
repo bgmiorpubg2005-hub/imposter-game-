@@ -1,0 +1,5 @@
+{
+  "name": "Imposter",
+  "description": "A multiplayer social deduction word game where players identify the imposter with a different secret word.",
+  "requestFramePermissions": ["microphone"]
+}
