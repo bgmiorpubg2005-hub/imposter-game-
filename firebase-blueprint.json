@@ -1,0 +1,44 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Stores user information and statistics.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The unique ID of the user." },
+        "displayName": { "type": "string", "description": "The name displayed in games." },
+        "email": { "type": "string", "description": "The user's email address." },
+        "photoURL": { "type": "string", "description": "URL to the user's profile picture." },
+        "totalScore": { "type": "integer", "description": "Total score accumulated across all games." },
+        "gamesPlayed": { "type": "integer", "description": "Number of games played." },
+        "gamesWon": { "type": "integer", "description": "Number of games won." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the profile was created." }
+      },
+      "required": ["uid", "displayName", "email"]
+    },
+    "GameHistory": {
+      "title": "Game History",
+      "description": "Records of completed games.",
+      "type": "object",
+      "properties": {
+        "roomCode": { "type": "string" },
+        "winner": { "type": "string", "enum": ["players", "imposter"] },
+        "players": { "type": "array", "items": { "type": "string" }, "description": "List of player names." },
+        "wordA": { "type": "string" },
+        "wordB": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["roomCode", "winner", "players", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile documents."
+    },
+    "/games/{gameId}": {
+      "schema": "GameHistory",
+      "description": "History of played games."
+    }
+  }
+}

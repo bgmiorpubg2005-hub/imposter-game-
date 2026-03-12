@@ -2,10 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { GameState, Player, ServerMessage, ClientMessage, GameStatus, GameMode } from '../types';
 import { VoiceChat } from './VoiceChat';
 import { motion, AnimatePresence } from 'motion/react';
-import { User, MessageSquare, Timer, Trophy, AlertCircle, Send, Mic, MicOff, Users, Crown, Sparkles, Loader2, Plus, Minus, Settings, CheckCircle2, XCircle, Copy, Check } from 'lucide-react';
+import { User, MessageSquare, Timer, Trophy, AlertCircle, Send, Mic, MicOff, Users, Crown, Sparkles, Loader2, Plus, Minus, Settings, CheckCircle2, XCircle, Copy, Check, LogIn, LogOut } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
+import { useFirebase } from './FirebaseProvider';
+import { db, handleFirestoreError, OperationType } from '../firebase';
+import { doc, updateDoc, increment, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 
 export default function Game() {
+  const { user, signIn, logout, isAuthReady } = useFirebase();
   const [mode, setMode] = useState<GameMode | null>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [playerId, setPlayerId] = useState<string | null>(null);
@@ -57,6 +61,51 @@ export default function Game() {
       return () => clearInterval(interval);
     }
   }, [mode, offlineGameState?.status, offlineGameState?.timer]);
+
+  useEffect(() => {
+    if (user?.displayName && !name) {
+      setName(user.displayName);
+    }
+  }, [user, name]);
+
+  // Record game results to Firestore
+  useEffect(() => {
+    if (gameState?.status === 'results' && user) {
+      const recordGame = async () => {
+        try {
+          const gameRef = collection(db, 'games');
+          await addDoc(gameRef, {
+            roomCode: gameState.roomCode,
+            winner: gameState.winner,
+            players: Object.values(gameState.players).map(p => p.name),
+            wordA: gameState.wordA,
+            wordB: gameState.wordB,
+            timestamp: serverTimestamp()
+          });
+
+          // Update user stats
+          const userRef = doc(db, 'users', user.uid);
+          const me = gameState.players[playerId || ''];
+          const won = (me?.isImposter && gameState.winner === 'imposter') || 
+                      (!me?.isImposter && gameState.winner === 'players');
+          
+          await updateDoc(userRef, {
+            totalScore: increment(me?.score || 0),
+            gamesPlayed: increment(1),
+            gamesWon: increment(won ? 1 : 0)
+          });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, 'games/users');
+        }
+      };
+      
+      // Only one player records the game to avoid duplicates (e.g., the one with the smallest ID)
+      const sortedIds = Object.keys(gameState.players).sort();
+      if (playerId === sortedIds[0]) {
+        recordGame();
+      }
+    }
+  }, [gameState?.status, user, playerId, gameState]);
 
   useEffect(() => {
     if (mode !== 'online') return;
@@ -246,6 +295,29 @@ export default function Game() {
           <p className="text-indigo-200 mb-8 text-sm font-medium">Choose your game mode</p>
           
           <div className="space-y-4">
+            {user ? (
+              <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/10 mb-4">
+                <div className="flex items-center gap-3">
+                  <img src={user.photoURL || ''} alt="" className="w-10 h-10 rounded-full border border-white/20" referrerPolicy="no-referrer" />
+                  <div className="text-left">
+                    <div className="text-xs text-indigo-300 font-bold uppercase">Logged in as</div>
+                    <div className="font-black text-sm">{user.displayName}</div>
+                  </div>
+                </div>
+                <button onClick={logout} className="p-2 hover:bg-white/10 rounded-xl transition-all text-indigo-300">
+                  <LogOut size={18} />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={signIn}
+                className="w-full p-4 bg-white/10 hover:bg-white/20 border border-white/10 rounded-2xl font-black text-sm transition-all flex items-center justify-center gap-3 mb-4"
+              >
+                <LogIn size={18} />
+                SIGN IN WITH GOOGLE
+              </button>
+            )}
+
             <button
               onClick={() => setMode('online')}
               className="w-full p-6 bg-indigo-500 hover:bg-indigo-400 rounded-2xl font-black text-xl transition-all shadow-xl shadow-indigo-500/30 flex items-center justify-center gap-3"

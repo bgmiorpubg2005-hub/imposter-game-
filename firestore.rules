@@ -1,0 +1,110 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId} (matches request.auth.uid)
+    // Fields:
+    //   - uid: string (required, immutable) - User's unique ID
+    //   - displayName: string (required) - Display name
+    //   - email: string (required, immutable) - User's email
+    //   - photoURL: string (optional) - Profile picture URL
+    //   - totalScore: number (required) - Total score
+    //   - gamesPlayed: number (required) - Count of games
+    //   - gamesWon: number (required) - Count of wins
+    //   - createdAt: timestamp (required, immutable) - Creation time
+    //
+    // Collection: games
+    // Document ID: {gameId}
+    // Fields:
+    //   - roomCode: string (required)
+    //   - winner: string (required, enum: ['players', 'imposter'])
+    //   - players: list (required) - List of player names
+    //   - wordA: string (required)
+    //   - wordB: string (required)
+    //   - timestamp: timestamp (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "bgmiorpubg2005@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.keys().hasOnly(['uid', 'displayName', 'email', 'photoURL', 'totalScore', 'gamesPlayed', 'gamesWon', 'createdAt', 'role']) &&
+             data.uid is string && data.uid.size() > 0 &&
+             data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 50 &&
+             isValidEmail(data.email) &&
+             data.totalScore is number && data.totalScore >= 0 &&
+             data.gamesPlayed is number && data.gamesPlayed >= 0 &&
+             data.gamesWon is number && data.gamesWon >= 0 &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidGame(data) {
+      return data.keys().hasOnly(['roomCode', 'winner', 'players', 'wordA', 'wordB', 'timestamp']) &&
+             data.roomCode is string && data.roomCode.size() == 6 &&
+             data.winner in ['players', 'imposter'] &&
+             data.players is list && data.players.size() <= 10 &&
+             data.wordA is string && data.wordB is string &&
+             data.timestamp is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      // Users can only read their own private data. 
+      // If we needed public profiles, we'd split into users_public.
+      allow read: if isOwner(userId) || isAdmin();
+      
+      allow create: if isOwner(userId) && 
+                      isValidUser(request.resource.data) && 
+                      (!('role' in request.resource.data) || request.resource.data.role == 'user');
+      
+      allow update: if isOwner(userId) && 
+                      isValidUser(request.resource.data) &&
+                      request.resource.data.uid == resource.data.uid &&
+                      request.resource.data.email == resource.data.email &&
+                      request.resource.data.createdAt == resource.data.createdAt &&
+                      (request.resource.data.role == resource.data.role || isAdmin());
+    }
+
+    match /games/{gameId} {
+      // Game history is readable by authenticated users
+      allow read: if isAuthenticated();
+      
+      // Only authenticated users can record game history
+      allow create: if isAuthenticated() && isValidGame(request.resource.data);
+      
+      // Game history is immutable
+      allow update, delete: if isAdmin();
+    }
+  }
+}
