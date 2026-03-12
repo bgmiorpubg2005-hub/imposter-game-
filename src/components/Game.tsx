@@ -127,6 +127,17 @@ export default function Game() {
     }
   };
 
+  const handleExitLobby = () => {
+    ws.current?.close();
+    setMode(null);
+    setGameState(null);
+    setIsJoined(false);
+    setPlayerId(null);
+    setOnlineAction(null);
+    setError(null);
+    setChatMessages([]);
+  };
+
   const handleOfflineStart = () => {
     if (offlineSetup.playerCount < 3) {
       setError("At least 3 players are required.");
@@ -606,6 +617,15 @@ export default function Game() {
             <Trophy size={16} className="text-yellow-400" />
             <span className="font-bold">{me?.score}</span>
           </div>
+          {mode === 'online' && (
+            <button
+              onClick={handleExitLobby}
+              className="p-2 hover:bg-red-500/20 text-red-400 rounded-xl transition-colors border border-transparent hover:border-red-500/20"
+              title="Leave Game"
+            >
+              <XCircle size={20} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -669,21 +689,32 @@ export default function Game() {
                     ))}
                   </div>
 
-                  <div className="flex gap-4">
-                    <button
-                      onClick={() => mode === 'online' ? send({ type: 'ready' }) : null}
-                      className={`flex-1 p-5 rounded-2xl font-black text-lg transition-all shadow-xl ${
-                        me?.isReady ? 'bg-indigo-900 text-indigo-400 border border-indigo-500/30' : 'bg-white text-indigo-950 hover:bg-indigo-50 shadow-white/10'
-                      }`}
-                    >
-                      {me?.isReady ? 'NOT READY' : 'READY UP'}
-                    </button>
-                    {players.length >= 3 && mode === 'online' && (
+                  <div className="flex flex-col gap-3">
+                    <div className="flex gap-4">
                       <button
-                        onClick={() => send({ type: 'start_game' })}
-                        className="p-5 bg-emerald-500 hover:bg-emerald-400 text-white rounded-2xl font-black text-lg transition-all shadow-xl shadow-emerald-500/20"
+                        onClick={() => mode === 'online' ? send({ type: 'ready' }) : null}
+                        className={`flex-1 p-5 rounded-2xl font-black text-lg transition-all shadow-xl ${
+                          me?.isReady ? 'bg-indigo-900 text-indigo-400 border border-indigo-500/30' : 'bg-white text-indigo-950 hover:bg-indigo-50 shadow-white/10'
+                        }`}
                       >
-                        START
+                        {me?.isReady ? 'NOT READY' : 'READY UP'}
+                      </button>
+                      {players.length >= 3 && mode === 'online' && (
+                        <button
+                          onClick={() => send({ type: 'start_game' })}
+                          className="p-5 bg-emerald-500 hover:bg-emerald-400 text-white rounded-2xl font-black text-lg transition-all shadow-xl shadow-emerald-500/20"
+                        >
+                          START
+                        </button>
+                      )}
+                    </div>
+                    
+                    {mode === 'online' && (
+                      <button
+                        onClick={handleExitLobby}
+                        className="w-full p-4 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-2xl font-bold text-sm transition-all"
+                      >
+                        EXIT LOBBY
                       </button>
                     )}
                   </div>
