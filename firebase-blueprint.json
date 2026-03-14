@@ -29,6 +29,23 @@
         "timestamp": { "type": "string", "format": "date-time" }
       },
       "required": ["roomCode", "winner", "players", "timestamp"]
+    },
+    "Room": {
+      "title": "Game Room",
+      "description": "Active game session state.",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string" },
+        "players": { "type": "object" },
+        "wordA": { "type": "string" },
+        "wordB": { "type": "string" },
+        "currentCluePlayerId": { "type": "string" },
+        "timer": { "type": "integer" },
+        "winner": { "type": "string" },
+        "roomCode": { "type": "string" },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["status", "players", "roomCode"]
     }
   },
   "firestore": {
@@ -39,6 +56,10 @@
     "/games/{gameId}": {
       "schema": "GameHistory",
       "description": "History of played games."
+    },
+    "/rooms/{roomCode}": {
+      "schema": "Room",
+      "description": "Active game rooms."
     }
   }
 }

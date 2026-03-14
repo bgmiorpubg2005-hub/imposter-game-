@@ -6,7 +6,7 @@ import { User, MessageSquare, Timer, Trophy, AlertCircle, Send, Mic, MicOff, Use
 import { GoogleGenAI } from "@google/genai";
 import { useFirebase } from './FirebaseProvider';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { doc, updateDoc, increment, addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, increment, addDoc, collection, serverTimestamp, onSnapshot, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
 
 export default function Game() {
   const { user, signIn, logout, isAuthReady } = useFirebase();
@@ -25,7 +25,7 @@ export default function Game() {
   const [error, setError] = useState<string | null>(null);
   const [onlineAction, setOnlineAction] = useState<'create' | 'join' | null>(null);
   const [copied, setCopied] = useState(false);
-  const ws = useRef<WebSocket | null>(null);
+  const unsubscribeRoom = useRef<(() => void) | null>(null);
 
   // Offline State
   const [offlineSetup, setOfflineSetup] = useState({
@@ -108,39 +108,48 @@ export default function Game() {
   }, [gameState?.status, user, playerId, gameState]);
 
   useEffect(() => {
-    if (mode !== 'online') return;
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws.current = new WebSocket(`${protocol}//${window.location.host}`);
+    if (mode !== 'online' || !isJoined || !roomCodeInput) return;
 
-    ws.current.onmessage = (event) => {
-      try {
-        const message: ServerMessage = JSON.parse(event.data);
-        if (message.type === 'init') {
-          setGameState(message.state);
-          setPlayerId(message.playerId);
-          setIsJoined(true);
-          setError(null);
-        } else if (message.type === 'update') {
-          setGameState(message.state);
-        } else if (message.type === 'voice') {
-          setIncomingAudio({ from: message.from, data: message.data });
-        } else if (message.type === 'chat') {
-          const sender = gameState?.players[message.from];
-          setChatMessages(prev => [...prev, { 
-            name: message.name, 
-            text: message.text, 
-            color: sender?.color || '#fff' 
-          }].slice(-50));
-        } else if (message.type === 'error') {
-          setError(message.message);
-        }
-      } catch (err) {
-        console.error('Failed to parse server message:', err);
+    const roomRef = doc(db, 'rooms', roomCodeInput.toUpperCase());
+    unsubscribeRoom.current = onSnapshot(roomRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data() as GameState;
+        setGameState(data);
+        if (user) setPlayerId(user.uid);
+      } else {
+        setError("Room not found or closed.");
+        setIsJoined(false);
       }
-    };
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, `rooms/${roomCodeInput}`);
+    });
 
-    return () => ws.current?.close();
-  }, [mode, gameState?.players]);
+    return () => {
+      unsubscribeRoom.current?.();
+    };
+  }, [mode, isJoined, roomCodeInput, user]);
+
+  // Online Timer Sync (Host only)
+  useEffect(() => {
+    if (mode === 'online' && gameState?.status === 'discussion' && gameState.timer > 0) {
+      const sortedIds = Object.keys(gameState.players).sort();
+      if (playerId !== sortedIds[0]) return; // Only host updates timer
+
+      const interval = setInterval(async () => {
+        const newTimer = gameState.timer - 1;
+        const roomRef = doc(db, 'rooms', gameState.roomCode);
+        try {
+          await updateDoc(roomRef, {
+            timer: newTimer,
+            status: newTimer === 0 ? 'voting' : 'discussion'
+          });
+        } catch (err) {
+          console.error("Timer update failed:", err);
+        }
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [mode, gameState?.status, gameState?.timer, gameState?.roomCode, gameState?.players, playerId]);
 
   useEffect(() => {
     if (gameState?.status === 'lobby' || gameState?.status === 'reveal') {
@@ -148,36 +157,90 @@ export default function Game() {
     }
   }, [gameState?.status]);
 
-  const send = (message: ClientMessage) => {
-    if (ws.current?.readyState === WebSocket.OPEN) {
-      ws.current.send(JSON.stringify(message));
-    } else {
-      console.warn('WebSocket is not open. State:', ws.current?.readyState);
+  const updateOnlineState = async (updates: Partial<GameState>) => {
+    if (!gameState?.roomCode) return;
+    try {
+      const roomRef = doc(db, 'rooms', gameState.roomCode);
+      await updateDoc(roomRef, updates);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `rooms/${gameState.roomCode}`);
     }
   };
 
-  const handleCopyCode = () => {
-    if (currentGameState?.roomCode) {
-      navigator.clipboard.writeText(currentGameState.roomCode);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+  const handleCreateRoom = async () => {
+    if (!name.trim() || !user) return;
+    
+    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const initialPlayer: Player = {
+      id: user.uid,
+      name: name.trim(),
+      isImposter: false,
+      isReady: false,
+      score: 0,
+      color: `hsl(${Math.random() * 360}, 70%, 60%)`
+    };
+
+    const initialState: GameState = {
+      status: 'lobby',
+      players: { [user.uid]: initialPlayer },
+      timer: 60,
+      roomCode: code
+    };
+
+    try {
+      await setDoc(doc(db, 'rooms', code), initialState);
+      setRoomCodeInput(code);
+      setIsJoined(true);
+      setPlayerId(user.uid);
+      setError(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `rooms/${code}`);
     }
   };
 
-  const handleCreateRoom = () => {
-    if (name.trim()) {
-      send({ type: 'create_room', name });
-    }
-  };
+  const handleJoinRoom = async () => {
+    if (!name.trim() || !roomCodeInput.trim() || !user) return;
+    
+    const code = roomCodeInput.trim().toUpperCase();
+    const roomRef = doc(db, 'rooms', code);
+    
+    try {
+      const snap = await getDoc(roomRef);
+      if (!snap.exists()) {
+        setError("Room not found.");
+        return;
+      }
 
-  const handleJoinRoom = () => {
-    if (name.trim() && roomCodeInput.trim()) {
-      send({ type: 'join_room', name, roomCode: roomCodeInput });
+      const data = snap.data() as GameState;
+      if (Object.keys(data.players).length >= 10) {
+        setError("Room is full.");
+        return;
+      }
+
+      const newPlayer: Player = {
+        id: user.uid,
+        name: name.trim(),
+        isImposter: false,
+        isReady: false,
+        score: 0,
+        color: `hsl(${Math.random() * 360}, 70%, 60%)`
+      };
+
+      await updateDoc(roomRef, {
+        [`players.${user.uid}`]: newPlayer
+      });
+
+      setRoomCodeInput(code);
+      setIsJoined(true);
+      setPlayerId(user.uid);
+      setError(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `rooms/${code}`);
     }
   };
 
   const handleExitLobby = () => {
-    ws.current?.close();
+    unsubscribeRoom.current?.();
     setMode(null);
     setGameState(null);
     setIsJoined(false);
@@ -186,6 +249,108 @@ export default function Game() {
     setError(null);
     setChatMessages([]);
   };
+
+  const handleStartGame = async () => {
+    if (!gameState || !user) return;
+    const players = Object.values(gameState.players);
+    if (players.length < 3) return;
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: "Generate two related but distinct words for a social deduction game (e.g., 'Pizza' and 'Burger'). Return them as a JSON object: { \"a\": \"WordA\", \"b\": \"WordB\" }",
+        config: { responseMimeType: "application/json" }
+      });
+      
+      const words = JSON.parse(response.text || '{"a": "Coffee", "b": "Tea"}');
+      const imposterIndex = Math.floor(Math.random() * players.length);
+      
+      const updatedPlayers = { ...gameState.players };
+      players.forEach((p, i) => {
+        const isImposter = i === imposterIndex;
+        updatedPlayers[p.id] = {
+          ...p,
+          isImposter,
+          word: isImposter ? words.b : words.a,
+          isReady: true,
+          clue: "",
+          vote: ""
+        };
+      });
+
+      await updateOnlineState({
+        status: 'reveal',
+        players: updatedPlayers,
+        wordA: words.a,
+        wordB: words.b,
+        timer: 60
+      });
+    } catch (err) {
+      console.error("Failed to start game:", err);
+    }
+  };
+
+  // Host-only logic to transition game phases
+  useEffect(() => {
+    if (mode !== 'online' || !gameState || !playerId) return;
+    const players = Object.values(gameState.players);
+    const sortedIds = Object.keys(gameState.players).sort();
+    if (playerId !== sortedIds[0]) return; // Only host manages transitions
+
+    const checkTransitions = async () => {
+      if (gameState.status === 'reveal') {
+        // Auto transition after 10 seconds
+        const timer = setTimeout(() => {
+          updateOnlineState({ status: 'clue' });
+        }, 10000);
+        return () => clearTimeout(timer);
+      }
+
+      if (gameState.status === 'clue') {
+        const allCluesSubmitted = players.every(p => p.clue);
+        if (allCluesSubmitted) {
+          updateOnlineState({ status: 'discussion', timer: 60 });
+        }
+      }
+
+      if (gameState.status === 'voting') {
+        const allVoted = players.every(p => p.vote);
+        if (allVoted) {
+          // Calculate winner
+          const votes: Record<string, number> = {};
+          players.forEach(p => {
+            if (p.vote) votes[p.vote] = (votes[p.vote] || 0) + 1;
+          });
+          
+          const sortedVotes = Object.entries(votes).sort((a, b) => b[1] - a[1]);
+          if (sortedVotes.length === 0) return;
+
+          const mostVotedId = sortedVotes[0][0];
+          const imposter = players.find(p => p.isImposter);
+          const winner = mostVotedId === imposter?.id ? 'players' : 'imposter';
+          
+          // Update scores
+          const updatedPlayers = { ...gameState.players };
+          if (winner === 'players') {
+            players.forEach(p => {
+              if (!p.isImposter) updatedPlayers[p.id].score += 10;
+            });
+          } else if (imposter) {
+            updatedPlayers[imposter.id].score += 20;
+          }
+
+          updateOnlineState({ 
+            status: 'results', 
+            winner,
+            players: updatedPlayers
+          });
+        }
+      }
+    };
+
+    checkTransitions();
+  }, [gameState?.status, gameState?.players, mode, playerId]);
 
   const handleOfflineStart = () => {
     if (offlineSetup.playerCount < 3) {
@@ -264,11 +429,25 @@ export default function Game() {
     }
   };
 
-  const handleSendChat = (e: React.FormEvent) => {
+  const handleCopyCode = () => {
+    if (gameState?.roomCode) {
+      navigator.clipboard.writeText(gameState.roomCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleSendChat = async (e: React.FormEvent) => {
     e.preventDefault();
     if (chatText.trim()) {
-      if (mode === 'online') {
-        send({ type: 'chat', text: chatText });
+      if (mode === 'online' && gameState) {
+        const newMessage = {
+          name: me?.name || 'Me',
+          text: chatText,
+          color: me?.color || '#fff'
+        };
+        const updatedChat = [...(gameState.chat || []), newMessage].slice(-50);
+        updateOnlineState({ chat: updatedChat });
       } else {
         setChatMessages(prev => [...prev, { 
           name: me?.name || 'Me', 
@@ -590,6 +769,7 @@ export default function Game() {
   const currentGameState = mode === 'offline' ? offlineGameState : gameState;
   const me = playerId ? currentGameState?.players[playerId] : (mode === 'offline' ? Object.values(currentGameState?.players || {})[offlineRevealIndex] : null);
   const players = Object.values(currentGameState?.players || {});
+  const currentChat = mode === 'online' ? (gameState?.chat || []) : chatMessages;
 
   if (mode === 'offline' && currentGameState?.status === 'reveal') {
     const currentPlayer = Object.values(currentGameState.players)[offlineRevealIndex];
@@ -764,7 +944,11 @@ export default function Game() {
                   <div className="flex flex-col gap-3">
                     <div className="flex gap-4">
                       <button
-                        onClick={() => mode === 'online' ? send({ type: 'ready' }) : null}
+                        onClick={() => {
+                          if (mode === 'online' && playerId) {
+                            updateOnlineState({ [`players.${playerId}.isReady`]: !me?.isReady });
+                          }
+                        }}
                         className={`flex-1 p-5 rounded-2xl font-black text-lg transition-all shadow-xl ${
                           me?.isReady ? 'bg-indigo-900 text-indigo-400 border border-indigo-500/30' : 'bg-white text-indigo-950 hover:bg-indigo-50 shadow-white/10'
                         }`}
@@ -773,7 +957,7 @@ export default function Game() {
                       </button>
                       {players.length >= 3 && mode === 'online' && (
                         <button
-                          onClick={() => send({ type: 'start_game' })}
+                          onClick={handleStartGame}
                           className="p-5 bg-emerald-500 hover:bg-emerald-400 text-white rounded-2xl font-black text-lg transition-all shadow-xl shadow-emerald-500/20"
                         >
                           START
@@ -838,8 +1022,8 @@ export default function Game() {
                       />
                       <button
                         onClick={() => {
-                          if (clue.trim() && mode === 'online') {
-                            send({ type: 'submit_clue', clue });
+                          if (clue.trim() && mode === 'online' && playerId) {
+                            updateOnlineState({ [`players.${playerId}.clue`]: clue });
                             setClue('');
                           }
                         }}
@@ -976,8 +1160,8 @@ export default function Game() {
                         key={p.id}
                         disabled={mode === 'online' && !!me?.vote}
                         onClick={() => {
-                          if (mode === 'online') {
-                            send({ type: 'vote', targetId: p.id });
+                          if (mode === 'online' && playerId) {
+                            updateOnlineState({ [`players.${playerId}.vote`]: p.id });
                           } else {
                             if (checkedOfflinePlayerIds.includes(p.id)) return;
                             setRevealedPlayerId(p.id);
@@ -1143,7 +1327,7 @@ export default function Game() {
             </div>
             
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {chatMessages.map((msg, i) => (
+              {currentChat.map((msg, i) => (
                 <div key={i} className="text-sm">
                   <span className="font-black mr-2" style={{ color: msg.color }}>{msg.name}:</span>
                   <span className="text-indigo-100">{msg.text}</span>
@@ -1168,14 +1352,6 @@ export default function Game() {
           </div>
         )}
       </div>
-
-      {/* Voice Chat */}
-      {mode === 'online' && (
-        <VoiceChat 
-          onAudioData={(data) => send({ type: 'voice', data })} 
-          incomingAudio={incomingAudio}
-        />
-      )}
     </div>
   );
 }

@@ -22,6 +22,7 @@ export interface GameState {
   timer: number;
   winner?: 'players' | 'imposter';
   roomCode: string;
+  chat?: { name: string; text: string; color: string }[];
 }
 
 export type ServerMessage =

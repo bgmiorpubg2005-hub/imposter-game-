@@ -1,7 +1,16 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
-import firebaseConfig from '../firebase-applet-config.json';
+import firebaseConfigLocal from '../firebase-applet-config.json';
+
+// Support environment variables for Vercel/Production
+const firebaseConfig = {
+  apiKey: (import.meta as any).env.VITE_FIREBASE_API_KEY || firebaseConfigLocal.apiKey,
+  authDomain: (import.meta as any).env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfigLocal.authDomain,
+  projectId: (import.meta as any).env.VITE_FIREBASE_PROJECT_ID || firebaseConfigLocal.projectId,
+  appId: (import.meta as any).env.VITE_FIREBASE_APP_ID || firebaseConfigLocal.appId,
+  firestoreDatabaseId: (import.meta as any).env.VITE_FIREBASE_FIRESTORE_DB_ID || firebaseConfigLocal.firestoreDatabaseId,
+};
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);

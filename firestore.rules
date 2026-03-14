@@ -106,5 +106,20 @@ service cloud.firestore {
       // Game history is immutable
       allow update, delete: if isAdmin();
     }
+
+    match /rooms/{roomCode} {
+      // Rooms are readable by anyone who knows the code (authenticated)
+      allow read: if isAuthenticated();
+      
+      // Anyone authenticated can create a room
+      allow create: if isAuthenticated();
+      
+      // Anyone in the room can update it (for simplicity in this prototype)
+      // In a production app, we'd check if request.auth.uid is in the players map
+      allow update: if isAuthenticated();
+      
+      // Rooms can be deleted by admins or if they are old
+      allow delete: if isAdmin();
+    }
   }
 }
