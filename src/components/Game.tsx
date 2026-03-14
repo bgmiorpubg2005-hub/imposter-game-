@@ -1352,6 +1352,15 @@ export default function Game() {
           </div>
         )}
       </div>
+
+      {/* Voice Chat */}
+      {mode === 'online' && isJoined && gameState && playerId && (
+        <VoiceChat 
+          roomCode={gameState.roomCode}
+          playerId={playerId}
+          players={Object.keys(gameState.players).filter(id => id !== playerId)}
+        />
+      )}
     </div>
   );
 }

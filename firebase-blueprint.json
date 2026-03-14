@@ -46,6 +46,16 @@
         "lastUpdated": { "type": "string", "format": "date-time" }
       },
       "required": ["status", "players", "roomCode"]
+    },
+    "Signaling": {
+      "title": "WebRTC Signaling",
+      "description": "Exchanges WebRTC offers, answers, and ICE candidates.",
+      "type": "object",
+      "properties": {
+        "offer": { "type": "object" },
+        "answer": { "type": "object" },
+        "iceCandidates": { "type": "array" }
+      }
     }
   },
   "firestore": {
@@ -60,6 +70,10 @@
     "/rooms/{roomCode}": {
       "schema": "Room",
       "description": "Active game rooms."
+    },
+    "/rooms/{roomCode}/signaling/{signalId}": {
+      "schema": "Signaling",
+      "description": "WebRTC signaling messages."
     }
   }
 }

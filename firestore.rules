@@ -120,6 +120,15 @@ service cloud.firestore {
       
       // Rooms can be deleted by admins or if they are old
       allow delete: if isAdmin();
+
+      // Signaling for WebRTC voice chat
+      match /signaling/{signalId} {
+        allow read, write: if isAuthenticated();
+      }
+    }
+
+    match /test/connection {
+      allow read: if true;
     }
   }
 }

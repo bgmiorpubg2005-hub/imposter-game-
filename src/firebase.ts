@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getAnalytics, isSupported } from 'firebase/analytics';
 import firebaseConfigLocal from '../firebase-applet-config.json';
 
 // Support environment variables for Vercel/Production
@@ -10,10 +11,17 @@ const firebaseConfig = {
   projectId: (import.meta as any).env.VITE_FIREBASE_PROJECT_ID || firebaseConfigLocal.projectId,
   appId: (import.meta as any).env.VITE_FIREBASE_APP_ID || firebaseConfigLocal.appId,
   firestoreDatabaseId: (import.meta as any).env.VITE_FIREBASE_FIRESTORE_DB_ID || firebaseConfigLocal.firestoreDatabaseId,
+  storageBucket: firebaseConfigLocal.storageBucket,
+  messagingSenderId: firebaseConfigLocal.messagingSenderId,
+  measurementId: firebaseConfigLocal.measurementId,
+  databaseURL: (firebaseConfigLocal as any).databaseURL,
 };
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
+
+// Initialize Analytics (optional/async check)
+export const analytics = isSupported().then(yes => yes ? getAnalytics(app) : null);
 
 // Initialize services
 export const auth = getAuth(app);
