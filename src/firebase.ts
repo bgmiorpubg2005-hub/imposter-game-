@@ -4,13 +4,13 @@ import { getFirestore } from 'firebase/firestore';
 import { getAnalytics, isSupported } from 'firebase/analytics';
 import firebaseConfigLocal from '../firebase-applet-config.json';
 
-// Support environment variables for Vercel/Production
+// Prioritize local config for manual setup, fallback to env vars for production/Vercel
 const firebaseConfig = {
-  apiKey: (import.meta as any).env.VITE_FIREBASE_API_KEY || firebaseConfigLocal.apiKey,
-  authDomain: (import.meta as any).env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfigLocal.authDomain,
-  projectId: (import.meta as any).env.VITE_FIREBASE_PROJECT_ID || firebaseConfigLocal.projectId,
-  appId: (import.meta as any).env.VITE_FIREBASE_APP_ID || firebaseConfigLocal.appId,
-  firestoreDatabaseId: (import.meta as any).env.VITE_FIREBASE_FIRESTORE_DB_ID || firebaseConfigLocal.firestoreDatabaseId,
+  apiKey: firebaseConfigLocal.apiKey || (import.meta as any).env.VITE_FIREBASE_API_KEY,
+  authDomain: firebaseConfigLocal.authDomain || (import.meta as any).env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: firebaseConfigLocal.projectId || (import.meta as any).env.VITE_FIREBASE_PROJECT_ID,
+  appId: firebaseConfigLocal.appId || (import.meta as any).env.VITE_FIREBASE_APP_ID,
+  firestoreDatabaseId: firebaseConfigLocal.firestoreDatabaseId || (import.meta as any).env.VITE_FIREBASE_FIRESTORE_DB_ID,
   storageBucket: firebaseConfigLocal.storageBucket,
   messagingSenderId: firebaseConfigLocal.messagingSenderId,
   measurementId: firebaseConfigLocal.measurementId,
