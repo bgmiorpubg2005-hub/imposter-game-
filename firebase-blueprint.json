@@ -1,79 +1,81 @@
 {
   "entities": {
-    "UserProfile": {
-      "title": "User Profile",
-      "description": "Stores user information and statistics.",
+    "Player": {
+      "title": "Player",
+      "description": "A player in a game session",
       "type": "object",
       "properties": {
-        "uid": { "type": "string", "description": "The unique ID of the user." },
-        "displayName": { "type": "string", "description": "The name displayed in games." },
-        "email": { "type": "string", "description": "The user's email address." },
-        "photoURL": { "type": "string", "description": "URL to the user's profile picture." },
-        "totalScore": { "type": "integer", "description": "Total score accumulated across all games." },
-        "gamesPlayed": { "type": "integer", "description": "Number of games played." },
-        "gamesWon": { "type": "integer", "description": "Number of games won." },
-        "createdAt": { "type": "string", "format": "date-time", "description": "When the profile was created." }
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "word": { "type": "string" },
+        "isImposter": { "type": "boolean" },
+        "isReady": { "type": "boolean" },
+        "clue": { "type": "string" },
+        "vote": { "type": "string" },
+        "score": { "type": "number" },
+        "color": { "type": "string" }
       },
-      "required": ["uid", "displayName", "email"]
+      "required": ["id", "name", "isImposter", "isReady", "score", "color"]
     },
-    "GameHistory": {
-      "title": "Game History",
-      "description": "Records of completed games.",
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "A message in the game chat",
       "type": "object",
       "properties": {
-        "roomCode": { "type": "string" },
-        "winner": { "type": "string", "enum": ["players", "imposter"] },
-        "players": { "type": "array", "items": { "type": "string" }, "description": "List of player names." },
-        "wordA": { "type": "string" },
-        "wordB": { "type": "string" },
-        "timestamp": { "type": "string", "format": "date-time" }
+        "name": { "type": "string" },
+        "text": { "type": "string" },
+        "color": { "type": "string" }
       },
-      "required": ["roomCode", "winner", "players", "timestamp"]
+      "required": ["name", "text", "color"]
     },
     "Room": {
-      "title": "Game Room",
-      "description": "Active game session state.",
+      "title": "Room",
+      "description": "A game room session",
       "type": "object",
       "properties": {
-        "status": { "type": "string" },
-        "players": { "type": "object" },
+        "status": { "type": "string", "enum": ["lobby", "reveal", "clue", "discussion", "voting", "results"] },
+        "players": { 
+          "type": "object",
+          "description": "Map of player IDs to Player objects"
+        },
         "wordA": { "type": "string" },
         "wordB": { "type": "string" },
         "currentCluePlayerId": { "type": "string" },
-        "timer": { "type": "integer" },
-        "winner": { "type": "string" },
+        "timer": { "type": "number" },
+        "winner": { "type": "string", "enum": ["players", "imposter"] },
         "roomCode": { "type": "string" },
-        "lastUpdated": { "type": "string", "format": "date-time" }
+        "chat": {
+          "type": "array",
+          "items": { "$ref": "ChatMessage" }
+        }
       },
-      "required": ["status", "players", "roomCode"]
+      "required": ["status", "players", "timer", "roomCode"]
     },
-    "Signaling": {
-      "title": "WebRTC Signaling",
-      "description": "Exchanges WebRTC offers, answers, and ICE candidates.",
+    "UserStats": {
+      "title": "UserStats",
+      "description": "Persistent user statistics",
       "type": "object",
       "properties": {
-        "offer": { "type": "object" },
-        "answer": { "type": "object" },
-        "iceCandidates": { "type": "array" }
-      }
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "totalScore": { "type": "number" },
+        "gamesPlayed": { "type": "number" },
+        "gamesWon": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "totalScore", "gamesPlayed", "gamesWon"]
     }
   },
   "firestore": {
-    "/users/{userId}": {
-      "schema": "UserProfile",
-      "description": "User profile documents."
-    },
-    "/games/{gameId}": {
-      "schema": "GameHistory",
-      "description": "History of played games."
-    },
     "/rooms/{roomCode}": {
       "schema": "Room",
-      "description": "Active game rooms."
+      "description": "Active game rooms"
     },
-    "/rooms/{roomCode}/signaling/{signalId}": {
-      "schema": "Signaling",
-      "description": "WebRTC signaling messages."
+    "/users/{uid}": {
+      "schema": "UserStats",
+      "description": "User profiles and statistics"
     }
   }
 }

@@ -1,11 +1,10 @@
 {
-  "apiKey": "AIzaSyAFZxqqVuHu_3Ubet7bHkRZFbf7ZVBQTbA",
-  "authDomain": "imposter-b5d0a.firebaseapp.com",
-  "databaseURL": "https://imposter-b5d0a-default-rtdb.asia-southeast1.firebasedatabase.app",
-  "projectId": "imposter-b5d0a",
-  "storageBucket": "imposter-b5d0a.firebasestorage.app",
-  "messagingSenderId": "95672828027",
-  "appId": "1:95672828027:web:58608c28470f33a6de22de",
-  "measurementId": "G-QETRLKH86B",
-  "firestoreDatabaseId": "(default)"
+  "projectId": "gen-lang-client-0517419716",
+  "appId": "1:685943577538:web:39ecd0d43ad6e793a4945b",
+  "apiKey": "AIzaSyDdG7IUJQ55j5vePMtkSVe1QyH5BAM-I-g",
+  "authDomain": "gen-lang-client-0517419716.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-8a2f4803-9a2f-4802-b997-1510e3ab3e25",
+  "storageBucket": "gen-lang-client-0517419716.firebasestorage.app",
+  "messagingSenderId": "685943577538",
+  "measurementId": ""
 }

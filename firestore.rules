@@ -6,33 +6,34 @@ service cloud.firestore {
     // ===============================================================
     //
     // Collection: users
-    // Document ID: {userId} (matches request.auth.uid)
+    // Document ID: {uid}
     // Fields:
-    //   - uid: string (required, immutable) - User's unique ID
-    //   - displayName: string (required) - Display name
-    //   - email: string (required, immutable) - User's email
-    //   - photoURL: string (optional) - Profile picture URL
-    //   - totalScore: number (required) - Total score
-    //   - gamesPlayed: number (required) - Count of games
-    //   - gamesWon: number (required) - Count of wins
-    //   - createdAt: timestamp (required, immutable) - Creation time
+    //   - uid: string (required)
+    //   - displayName: string
+    //   - email: string
+    //   - photoURL: string
+    //   - totalScore: number (required)
+    //   - gamesPlayed: number (required)
+    //   - gamesWon: number (required)
+    //   - createdAt: timestamp
     //
-    // Collection: games
-    // Document ID: {gameId}
+    // Collection: rooms
+    // Document ID: {roomCode}
     // Fields:
+    //   - status: string (required)
+    //   - players: map (required)
+    //   - wordA: string
+    //   - wordB: string
+    //   - timer: number (required)
     //   - roomCode: string (required)
-    //   - winner: string (required, enum: ['players', 'imposter'])
-    //   - players: list (required) - List of player names
-    //   - wordA: string (required)
-    //   - wordB: string (required)
-    //   - timestamp: timestamp (required)
+    //   - chat: list
+    //   - winner: string
     //
     // ===============================================================
 
     // ===============================================================
     // Helper Functions
     // ===============================================================
-    
     function isAuthenticated() {
       return request.auth != null;
     }
@@ -42,37 +43,25 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isAuthenticated() && 
+      return isAuthenticated() &&
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-         (request.auth.token.email == "bgmiorpubg2005@gmail.com" && request.auth.token.email_verified == true));
+          (request.auth.token.email == "bgmiorpubg2005@gmail.com" && request.auth.token.email_verified == true));
     }
-
-    function isValidEmail(email) {
-      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
-    }
-
-    // ===============================================================
-    // Domain Validators
-    // ===============================================================
 
     function isValidUser(data) {
-      return data.keys().hasOnly(['uid', 'displayName', 'email', 'photoURL', 'totalScore', 'gamesPlayed', 'gamesWon', 'createdAt', 'role']) &&
-             data.uid is string && data.uid.size() > 0 &&
-             data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 50 &&
-             isValidEmail(data.email) &&
-             data.totalScore is number && data.totalScore >= 0 &&
-             data.gamesPlayed is number && data.gamesPlayed >= 0 &&
-             data.gamesWon is number && data.gamesWon >= 0 &&
-             data.createdAt is timestamp;
+      return data.keys().hasAll(['uid', 'totalScore', 'gamesPlayed', 'gamesWon']) &&
+             data.uid is string &&
+             data.totalScore is number &&
+             data.gamesPlayed is number &&
+             data.gamesWon is number;
     }
 
-    function isValidGame(data) {
-      return data.keys().hasOnly(['roomCode', 'winner', 'players', 'wordA', 'wordB', 'timestamp']) &&
-             data.roomCode is string && data.roomCode.size() == 6 &&
-             data.winner in ['players', 'imposter'] &&
-             data.players is list && data.players.size() <= 10 &&
-             data.wordA is string && data.wordB is string &&
-             data.timestamp is timestamp;
+    function isValidRoom(data) {
+      return data.keys().hasAll(['status', 'players', 'timer', 'roomCode']) &&
+             data.status in ['lobby', 'reveal', 'clue', 'discussion', 'voting', 'results'] &&
+             data.players is map &&
+             data.timer is number &&
+             data.roomCode is string;
     }
 
     // ===============================================================
@@ -80,48 +69,18 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      // Users can only read their own private data. 
-      // If we needed public profiles, we'd split into users_public.
-      allow read: if isOwner(userId) || isAdmin();
-      
-      allow create: if isOwner(userId) && 
-                      isValidUser(request.resource.data) && 
-                      (!('role' in request.resource.data) || request.resource.data.role == 'user');
-      
-      allow update: if isOwner(userId) && 
-                      isValidUser(request.resource.data) &&
-                      request.resource.data.uid == resource.data.uid &&
-                      request.resource.data.email == resource.data.email &&
-                      request.resource.data.createdAt == resource.data.createdAt &&
-                      (request.resource.data.role == resource.data.role || isAdmin());
-    }
-
-    match /games/{gameId} {
-      // Game history is readable by authenticated users
       allow read: if isAuthenticated();
-      
-      // Only authenticated users can record game history
-      allow create: if isAuthenticated() && isValidGame(request.resource.data);
-      
-      // Game history is immutable
-      allow update, delete: if isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data);
+      allow delete: if isAdmin();
     }
 
     match /rooms/{roomCode} {
-      // Rooms are readable by anyone who knows the code (authenticated)
-      allow read: if isAuthenticated();
-      
-      // Anyone authenticated can create a room
-      allow create: if isAuthenticated();
-      
-      // Anyone in the room can update it (for simplicity in this prototype)
-      // In a production app, we'd check if request.auth.uid is in the players map
-      allow update: if isAuthenticated();
-      
-      // Rooms can be deleted by admins or if they are old
+      allow read: if true; // Publicly readable to allow joining via code
+      allow create: if isAuthenticated() && isValidRoom(request.resource.data);
+      allow update: if isAuthenticated() && isValidRoom(request.resource.data);
       allow delete: if isAdmin();
-
-      // Signaling for WebRTC voice chat
+      
       match /signaling/{signalId} {
         allow read, write: if isAuthenticated();
       }
